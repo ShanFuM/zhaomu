@@ -7,7 +7,7 @@ const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const PORT = 9333
 const BASE = 'http://127.0.0.1:5173'
 const OUT = 'shots'
-const profile = join(process.env.TEMP ?? '.', 'zhaomu-cdp-profile')
+const profile = join(process.env.TEMP ?? '.', 'zhaomu-cdp-public')
 
 mkdirSync(OUT, { recursive: true })
 
@@ -16,6 +16,8 @@ const browser = spawn(
   [
     '--headless=new',
     '--disable-gpu',
+    '--disable-extensions',
+    '--disable-component-extensions-with-background-pages',
     '--hide-scrollbars',
     '--no-first-run',
     '--no-default-browser-check',
@@ -37,7 +39,9 @@ let target
 for (let i = 0; i < 60; i += 1) {
   try {
     const list = await json(`http://127.0.0.1:${PORT}/json/list`)
-    target = list.find((item) => item.type === 'page')
+    target =
+      list.find((item) => item.type === 'page' && item.url === 'about:blank') ??
+      list.find((item) => item.type === 'page')
     if (target) break
   } catch {
     /* 浏览器还没起来 */
