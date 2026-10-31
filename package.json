@@ -1,0 +1,36 @@
+{
+  "name": "zhaomu",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A private two-person memory site built with React and Cloudflare Workers.",
+  "license": "MIT",
+  "author": "Zhaomu contributors",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:api": "wrangler dev --port 8787",
+    "build": "tsc --noEmit && vite build",
+    "typecheck:worker": "tsc -p tsconfig.worker.json",
+    "preview": "vite preview --host 0.0.0.0",
+    "db:reset": "wrangler d1 execute zhaomu --local --file=scripts/reset-local.sql",
+    "db:seed": "node scripts/seed.mjs",
+    "deploy": "vite build && wrangler deploy"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.13",
+    "hono": "^4.6.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261028.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "wrangler": "4.154.0"
+  }
+}

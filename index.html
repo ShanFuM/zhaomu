@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#F2ECE4" />
+    <meta name="description" content="朝暮 · 只属于我们的记录" />
+    <script>
+      try {
+        var savedTheme = localStorage.getItem('zhaomu-theme')
+        if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme)
+        var savedMode = localStorage.getItem('zhaomu-mode') || 'light'
+        var hour = new Date().getHours()
+        var dark =
+          savedMode === 'dark' || (savedMode === 'auto' && (hour >= 20 || hour < 7))
+        if (dark) document.documentElement.setAttribute('data-mode', 'dark')
+      } catch (e) {}
+    </script>
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="朝暮" />
+    <title>朝暮</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

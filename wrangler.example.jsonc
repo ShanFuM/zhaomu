@@ -1,0 +1,33 @@
+{
+  // Copy this file to wrangler.jsonc, then fill in your own values.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "zhaomu",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "zhaomu",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "zhaomu-media"
+    }
+  ],
+  "vars": {
+    "SETUP_CODE": "change-me",
+    "APP_ENV": "production"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
