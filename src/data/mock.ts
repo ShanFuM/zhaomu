@@ -44,6 +44,7 @@ export interface Entry {
   tags: string[]
   photos?: string[]
   photoThumbs?: string[]
+  photoPreviews?: string[]
   voices?: string[]
   private?: boolean
   author?: { id: string; name: string }

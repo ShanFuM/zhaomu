@@ -5,7 +5,8 @@ import PhotoViewer from '../components/PhotoViewer'
 import { api, type ApiPhoto } from '../lib/api'
 import { monthLabel } from '../lib/date'
 import { isHeicImage } from '../lib/image'
-import { makePreview } from '../lib/compressImage'
+import { makePhotoVariants, makeThumb } from '../lib/compressImage'
+import { getPhotoQuality } from '../lib/photoPrefs'
 
 export default function Album() {
   const [photos, setPhotos] = useState<ApiPhoto[]>([])
@@ -14,6 +15,7 @@ export default function Album() {
   const [uploading, setUploading] = useState(0)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const attemptedThumbRef = useRef(new Set<string>())
 
   useEffect(() => {
     let alive = true
@@ -40,6 +42,53 @@ export default function Album() {
     window.addEventListener('zhaomu:add-photo', openPicker)
     return () => window.removeEventListener('zhaomu:add-photo', openPicker)
   }, [])
+
+  // 旧照片没有 480px 缩略图，加载一次后顺手补上，之后列表就不用再拉 1600px 预览
+  useEffect(() => {
+    const pending = photos.filter(
+      (photo) => !photo.hasThumb && !attemptedThumbRef.current.has(photo.id),
+    )
+    if (pending.length === 0) return
+
+    let cancelled = false
+    for (const photo of pending) attemptedThumbRef.current.add(photo.id)
+
+    const run = async () => {
+      for (const photo of pending) {
+        if (cancelled) return
+
+        try {
+          const response = await fetch(photo.previewUrl, {
+            credentials: 'include',
+          })
+          if (!response.ok) continue
+          const blob = await response.blob()
+          const thumb = await makeThumb(
+            new File([blob], 'thumb', { type: blob.type || 'image/jpeg' }),
+          )
+          if (!thumb || cancelled) continue
+
+          const result = await api.uploadThumb(photo.id, thumb)
+          if (cancelled) return
+          setPhotos((prev) =>
+            prev.map((item) =>
+              item.id === photo.id
+                ? { ...item, thumbUrl: result.thumbUrl, hasThumb: true }
+                : item,
+            ),
+          )
+        } catch {
+          /* 单张失败不影响其他照片 */
+        }
+      }
+    }
+
+    void run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [photos])
 
   const months = useMemo(() => {
     const map = new Map<string, ApiPhoto[]>()
@@ -90,12 +139,18 @@ export default function Album() {
     try {
       const uploaded: ApiPhoto[] = []
       for (const file of files) {
-        const preview = await makePreview(file)
-        const media = await api.upload(file, preview)
+        const variants = await makePhotoVariants(file, getPhotoQuality())
+        const media = await api.upload(
+          variants.main,
+          variants.preview,
+          variants.thumb,
+        )
         uploaded.push({
           id: media.id,
           url: media.url,
           previewUrl: media.previewUrl,
+          thumbUrl: media.thumbUrl,
+          hasThumb: media.hasThumb,
           mime: media.mime,
           takenAt: new Date().toISOString(),
           standalone: true,
@@ -153,7 +208,7 @@ export default function Album() {
                   setViewerIndex(index >= 0 ? index : 0)
                 }}
               >
-                <img src={photo.previewUrl} alt="" loading="lazy" />
+                <img src={photo.thumbUrl} alt="" loading="lazy" />
               </button>
             ))}
           </div>
@@ -161,13 +216,16 @@ export default function Album() {
       ))}
 
       <p className="footer-note">
-        列表用压缩预览，原图可在设置里选择是否保留
+        列表用缩略图，点开先显示预览，原图在后台加载
       </p>
       <div className="fab-space" />
 
       {viewerIndex !== null && (
         <PhotoViewer
-          photos={flatPhotos.map((photo) => ({ src: photo.url }))}
+          photos={flatPhotos.map((photo) => ({
+            src: photo.url,
+            previewSrc: photo.previewUrl,
+          }))}
           start={viewerIndex}
           onClose={() => setViewerIndex(null)}
           onIndexChange={setViewerIndex}

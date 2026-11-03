@@ -35,6 +35,7 @@ interface EntryRow {
   media_kind: string | null
   media_mime: string | null
   media_has_preview: number | null
+  media_has_thumb: number | null
 }
 
 interface SettingsRow {
@@ -488,7 +489,8 @@ app.get('/api/entries', async (c) => {
     `SELECT e.id, e.user_id, u.name AS author_name, e.body, e.mood, e.weather,
             e.location, e.is_private, e.created_at,
             m.id AS media_id, m.kind AS media_kind, m.mime AS media_mime,
-            m.has_preview AS media_has_preview
+            m.has_preview AS media_has_preview,
+            m.has_thumb AS media_has_thumb
      FROM entries e
      JOIN users u ON u.id = e.user_id
      LEFT JOIN media m ON m.entry_id = e.id
@@ -518,13 +520,23 @@ app.get('/api/entries', async (c) => {
     }
 
     if (row.media_id) {
-      ;(entry.media as { id: string; kind: string; mime: string; previewUrl: string }[]).push({
+      const previewUrl = row.media_has_preview
+        ? `/media/${row.media_id}/preview`
+        : `/media/${row.media_id}`
+      ;(entry.media as {
+        id: string
+        kind: string
+        mime: string
+        previewUrl: string
+        thumbUrl: string
+      }[]).push({
         id: row.media_id,
         kind: row.media_kind ?? 'image',
         mime: row.media_mime ?? 'application/octet-stream',
-        previewUrl: row.media_has_preview
-          ? `/media/${row.media_id}/preview`
-          : `/media/${row.media_id}`,
+        previewUrl,
+        thumbUrl: row.media_has_thumb
+          ? `/media/${row.media_id}/thumb`
+          : previewUrl,
       })
     }
   }
@@ -633,10 +645,20 @@ app.post('/api/media', async (c) => {
       ? previewValue
       : null
 
+  const thumbValue = form?.get('thumb')
+  const thumbFile =
+    kind === 'image' &&
+    thumbValue instanceof File &&
+    thumbValue.type.startsWith('image/') &&
+    thumbValue.size <= 4 * 1024 * 1024
+      ? thumbValue
+      : null
+
   const keepOriginal = (form?.get('keepOriginal') ?? '1') !== '0'
   const previewOnly = Boolean(previewFile && !keepOriginal)
   const mainFile = previewOnly && previewFile ? previewFile : file
   const hasPreview = Boolean(previewFile && keepOriginal)
+  const hasThumb = Boolean(thumbFile)
 
   const id = crypto.randomUUID()
   await c.env.BUCKET.put(`media/${id}`, mainFile.stream(), {
@@ -649,12 +671,19 @@ app.post('/api/media', async (c) => {
     })
   }
 
+  if (hasThumb && thumbFile) {
+    await c.env.BUCKET.put(`media/${id}/thumb`, thumbFile.stream(), {
+      httpMetadata: { contentType: thumbFile.type },
+    })
+  }
+
   await c.env.DB.prepare(
     `INSERT INTO media (
        id, user_id, entry_id, kind, mime, size,
-       has_preview, preview_mime, preview_size, created_at
+       has_preview, preview_mime, preview_size,
+       has_thumb, thumb_mime, thumb_size, created_at
      )
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -665,6 +694,9 @@ app.post('/api/media', async (c) => {
       hasPreview ? 1 : 0,
       hasPreview && previewFile ? previewFile.type : null,
       hasPreview && previewFile ? previewFile.size : null,
+      hasThumb ? 1 : 0,
+      hasThumb && thumbFile ? thumbFile.type : null,
+      hasThumb && thumbFile ? thumbFile.size : null,
       new Date().toISOString(),
     )
     .run()
@@ -674,18 +706,60 @@ app.post('/api/media', async (c) => {
       id,
       url: `/media/${id}`,
       previewUrl: hasPreview ? `/media/${id}/preview` : `/media/${id}`,
+      thumbUrl: hasThumb ? `/media/${id}/thumb` : `/media/${id}`,
       mime: mainFile.type,
       kind,
       hasPreview,
+      hasThumb,
     },
     201,
   )
 })
 
+app.patch('/api/media/:id/thumb', async (c) => {
+  const user = c.get('user')
+  const id = c.req.param('id')
+  const form = await c.req.formData().catch(() => null)
+  const thumb = form?.get('thumb')
+
+  if (!(thumb instanceof File)) return c.json({ error: 'missing_thumb' }, 400)
+  if (!thumb.type.startsWith('image/')) {
+    return c.json({ error: 'unsupported_type' }, 415)
+  }
+  if (thumb.size > 4 * 1024 * 1024) {
+    return c.json({ error: 'too_large' }, 413)
+  }
+
+  const media = await c.env.DB.prepare(
+    'SELECT user_id, kind FROM media WHERE id = ?',
+  )
+    .bind(id)
+    .first<{ user_id: string; kind: string }>()
+
+  if (!media) return c.json({ error: 'not_found' }, 404)
+  if (media.user_id !== user.id) return c.json({ error: 'forbidden' }, 403)
+  if (media.kind !== 'image') return c.json({ error: 'not_image' }, 400)
+
+  await c.env.BUCKET.put(`media/${id}/thumb`, thumb.stream(), {
+    httpMetadata: { contentType: thumb.type },
+  })
+
+  await c.env.DB.prepare(
+    `UPDATE media
+     SET has_thumb = 1, thumb_mime = ?, thumb_size = ?
+     WHERE id = ?`,
+  )
+    .bind(thumb.type, thumb.size, id)
+    .run()
+
+  return c.json({ thumbUrl: `/media/${id}/thumb`, hasThumb: true })
+})
+
 app.get('/api/album', async (c) => {
   const user = c.get('user')
   const rows = await c.env.DB.prepare(
-    `SELECT m.id, m.mime, m.kind, m.user_id, m.entry_id, m.has_preview,
+    `SELECT m.id, m.mime, m.kind, m.user_id, m.entry_id,
+            m.has_preview, m.has_thumb,
             COALESCE(e.created_at, m.created_at) AS taken_at
      FROM media m
      LEFT JOIN entries e ON e.id = m.entry_id
@@ -702,21 +776,27 @@ app.get('/api/album', async (c) => {
       user_id: string
       entry_id: string | null
       has_preview: number
+      has_thumb: number
       taken_at: string
     }>()
 
   return c.json({
-    photos: rows.results.map((row) => ({
-      id: row.id,
-      url: `/media/${row.id}`,
-      previewUrl: row.has_preview
+    photos: rows.results.map((row) => {
+      const previewUrl = row.has_preview
         ? `/media/${row.id}/preview`
-        : `/media/${row.id}`,
-      mime: row.mime,
-      takenAt: row.taken_at,
-      standalone: row.entry_id === null,
-      mine: row.user_id === user.id,
-    })),
+        : `/media/${row.id}`
+      return {
+        id: row.id,
+        url: `/media/${row.id}`,
+        previewUrl,
+        thumbUrl: row.has_thumb ? `/media/${row.id}/thumb` : previewUrl,
+        hasThumb: row.has_thumb === 1,
+        mime: row.mime,
+        takenAt: row.taken_at,
+        standalone: row.entry_id === null,
+        mine: row.user_id === user.id,
+      }
+    }),
   })
 })
 
@@ -741,6 +821,7 @@ app.delete('/api/media/:id', async (c) => {
   await c.env.BUCKET.delete([
     `media/${id}`,
     `media/${id}/preview`,
+    `media/${id}/thumb`,
   ])
   await c.env.DB.prepare('DELETE FROM media WHERE id = ?').bind(id).run()
 
@@ -771,6 +852,7 @@ app.delete('/api/entries/:id', async (c) => {
       media.results.flatMap((item) => [
         `media/${item.id}`,
         `media/${item.id}/preview`,
+        `media/${item.id}/thumb`,
       ]),
     )
   }
@@ -822,6 +904,51 @@ app.get('/media/:id/preview', async (c) => {
   return new Response(object.body as ReadableStream, {
     headers: {
       'Content-Type': media.preview_mime ?? media.mime,
+      'Cache-Control': 'private, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Disposition': 'inline',
+      'Content-Security-Policy':
+        "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox",
+    },
+  })
+})
+
+app.get('/media/:id/thumb', async (c) => {
+  const user = c.get('user')
+  const id = c.req.param('id')
+
+  const media = await c.env.DB.prepare(
+    'SELECT id, mime, thumb_mime, has_thumb, entry_id FROM media WHERE id = ?',
+  )
+    .bind(id)
+    .first<{
+      id: string
+      mime: string
+      thumb_mime: string | null
+      has_thumb: number
+      entry_id: string | null
+    }>()
+
+  if (!media) return c.json({ error: 'not_found' }, 404)
+
+  if (media.entry_id) {
+    const entry = await c.env.DB.prepare(
+      'SELECT user_id, is_private FROM entries WHERE id = ?',
+    )
+      .bind(media.entry_id)
+      .first<{ user_id: string; is_private: number }>()
+
+    if (entry?.is_private && entry.user_id !== user.id) {
+      return c.json({ error: 'forbidden' }, 403)
+    }
+  }
+
+  const object = await c.env.BUCKET.get(`media/${id}/thumb`)
+  if (!object) return c.json({ error: 'not_found' }, 404)
+
+  return new Response(object.body as ReadableStream, {
+    headers: {
+      'Content-Type': media.thumb_mime ?? media.mime,
       'Cache-Control': 'private, max-age=31536000, immutable',
       'X-Content-Type-Options': 'nosniff',
       'Content-Disposition': 'inline',
@@ -1241,7 +1368,7 @@ app.get('/api/geocode', async (c) => {
 
 app.get('/api/storage', async (c) => {
   const row = await c.env.DB.prepare(
-    'SELECT COUNT(*) AS count, COALESCE(SUM(size + COALESCE(preview_size, 0)), 0) AS bytes FROM media',
+    'SELECT COUNT(*) AS count, COALESCE(SUM(size + COALESCE(preview_size, 0) + COALESCE(thumb_size, 0)), 0) AS bytes FROM media',
   ).first<{ count: number; bytes: number }>()
 
   return c.json({
@@ -1274,7 +1401,7 @@ app.get('/api/export', async (c) => {
 
   const media = await c.env.DB.prepare(
     `SELECT m.id, m.mime, m.kind, m.size, m.entry_id, m.created_at,
-            m.has_preview, m.preview_size
+            m.has_preview, m.preview_size, m.has_thumb, m.thumb_size
      FROM media m
      LEFT JOIN entries e ON e.id = m.entry_id
      WHERE m.entry_id IS NULL OR e.is_private = 0 OR e.user_id = ?

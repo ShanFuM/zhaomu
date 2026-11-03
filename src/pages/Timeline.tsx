@@ -12,7 +12,8 @@ import type { VoiceValue } from '../components/VoiceInput'
 import VoicePlayer from '../components/VoicePlayer'
 import { dayDate, dayLabel } from '../lib/date'
 import { isHeicImage } from '../lib/image'
-import { makePreview } from '../lib/compressImage'
+import { makePhotoVariants } from '../lib/compressImage'
+import { getPhotoQuality } from '../lib/photoPrefs'
 
 type Filter = 'all' | 'photo' | 'private'
 
@@ -37,6 +38,9 @@ function toView(entry: ApiEntry): Entry {
     tags: entry.private ? ['仅自己'] : [],
     photos: images.map((media) => `/media/${media.id}`),
     photoThumbs: images.map(
+      (media) => media.thumbUrl ?? media.previewUrl ?? `/media/${media.id}`,
+    ),
+    photoPreviews: images.map(
       (media) => media.previewUrl ?? `/media/${media.id}`,
     ),
     voices: entry.media
@@ -56,10 +60,11 @@ function EntryCard({
   entry: Entry
   canDelete: boolean
   onDelete: () => void
-  onOpenPhoto: (photos: string[], index: number) => void
+  onOpenPhoto: (photos: string[], previews: string[], index: number) => void
 }) {
   const photos = entry.photos ?? []
   const thumbs = entry.photoThumbs ?? photos
+  const previews = entry.photoPreviews ?? photos
   const grid = photos.length >= 3 ? 'three' : photos.length === 2 ? 'two' : 'one'
 
   return (
@@ -74,7 +79,7 @@ function EntryCard({
                 key={src}
                 className="photo-btn"
                 aria-label={`查看第 ${index + 1} 张照片`}
-                onClick={() => onOpenPhoto(photos, index)}
+                onClick={() => onOpenPhoto(photos, previews, index)}
               >
                 <img src={thumbs[index] ?? src} alt="" loading="lazy" />
               </button>
@@ -133,9 +138,11 @@ export default function Timeline() {
   const [voice, setVoice] = useState<VoiceValue | null>(null)
   const [voiceBusy, setVoiceBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [viewer, setViewer] = useState<{ photos: string[]; index: number } | null>(
-    null,
-  )
+  const [viewer, setViewer] = useState<{
+    photos: string[]
+    previews: string[]
+    index: number
+  } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -241,9 +248,13 @@ export default function Timeline() {
     try {
       const next = [...photos]
       for (const file of files.slice(0, 9 - photos.length)) {
-        const preview = await makePreview(file)
-        const media = await api.upload(file, preview)
-        next.push({ id: media.id, url: media.previewUrl })
+        const variants = await makePhotoVariants(file, getPhotoQuality())
+        const media = await api.upload(
+          variants.main,
+          variants.preview,
+          variants.thumb,
+        )
+        next.push({ id: media.id, url: media.thumbUrl })
       }
       setPhotos(next)
     } catch {
@@ -317,7 +328,9 @@ export default function Timeline() {
               entry={entry}
               canDelete={Boolean(user && entry.author?.id === user.id)}
               onDelete={() => removeEntry(entry)}
-              onOpenPhoto={(photos, index) => setViewer({ photos, index })}
+              onOpenPhoto={(photos, previews, index) =>
+                setViewer({ photos, previews, index })
+              }
             />
           ))}
         </section>
@@ -458,7 +471,10 @@ export default function Timeline() {
 
       {viewer && (
         <PhotoViewer
-          photos={viewer.photos.map((src) => ({ src }))}
+          photos={viewer.photos.map((src, index) => ({
+            src,
+            previewSrc: viewer.previews[index] ?? src,
+          }))}
           start={viewer.index}
           onClose={() => setViewer(null)}
         />

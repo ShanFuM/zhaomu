@@ -33,7 +33,11 @@ import {
   type Mode,
 } from '../lib/appearance'
 import { patchHomeCache } from '../lib/homeCache'
-import { getKeepOriginal, setKeepOriginal } from '../lib/photoPrefs'
+import {
+  getPhotoQuality,
+  setPhotoQuality,
+  type PhotoQuality,
+} from '../lib/photoPrefs'
 
 const THEMES = [
   { id: 'sand', name: '暮砂', paper: '#F2ECE4', accent: '#A9705F' },
@@ -196,8 +200,8 @@ export default function Settings() {
   const [sheet, setSheet] = useState<SheetKind>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [keepOriginal, setKeepOriginalState] = useState(() =>
-    getKeepOriginal(),
+  const [photoQuality, setPhotoQualityState] = useState<PhotoQuality>(() =>
+    getPhotoQuality(),
   )
 
   const [cityDraft, setCityDraft] = useState<City[]>([])
@@ -762,29 +766,38 @@ export default function Settings() {
                     </strong>
                   </div>
                 </div>
-                <div className="mini-seg" role="radiogroup" aria-label="原图策略">
+                <div className="mini-seg" role="radiogroup" aria-label="照片质量">
                   <button
-                    className={keepOriginal ? 'on' : ''}
+                    className={photoQuality === 'high' ? 'on' : ''}
                     onClick={() => {
-                      setKeepOriginalState(true)
-                      setKeepOriginal(true)
+                      setPhotoQualityState('high')
+                      setPhotoQuality('high')
                     }}
                   >
-                    保留原图
+                    高清压缩
                   </button>
                   <button
-                    className={!keepOriginal ? 'on' : ''}
+                    className={photoQuality === 'raw' ? 'on' : ''}
                     onClick={() => {
-                      setKeepOriginalState(false)
-                      setKeepOriginal(false)
+                      setPhotoQualityState('raw')
+                      setPhotoQuality('raw')
+                    }}
+                  >
+                    相机原图
+                  </button>
+                  <button
+                    className={photoQuality === 'preview' ? 'on' : ''}
+                    onClick={() => {
+                      setPhotoQualityState('preview')
+                      setPhotoQuality('preview')
                     }}
                   >
                     只存压缩图
                   </button>
                 </div>
                 <p className="hint">
-                  列表和预览始终用压缩图；保留原图时，大图和下载仍是原文件。
-                  关掉后只存压缩图，更省空间，但放大和打印会丢细节。
+                  列表用 480px 缩略图，点开先用 1600px 预览，再在后台加载原图。
+                  「高清压缩」会把图压到 2048px，上传最快；「相机原图」保留相机原文件但最慢。
                 </p>
               </>
             )}

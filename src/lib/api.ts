@@ -1,5 +1,3 @@
-import { getKeepOriginal } from './photoPrefs'
-
 export interface User {
   id: string
   name: string
@@ -11,6 +9,7 @@ export interface MediaRef {
   kind: string
   mime: string
   previewUrl: string
+  thumbUrl: string
 }
 
 export interface ApiEntry {
@@ -29,6 +28,8 @@ export interface ApiPhoto {
   id: string
   url: string
   previewUrl: string
+  thumbUrl: string
+  hasThumb: boolean
   mime: string
   takenAt: string
   standalone: boolean
@@ -202,19 +203,30 @@ export const api = {
   deleteMedia: (id: string) =>
     request<{ ok: boolean }>(`/api/media/${id}`, { method: 'DELETE' }),
 
-  upload: (file: File, preview?: File | null) => {
+  upload: (file: File, preview?: File | null, thumb?: File | null) => {
     const form = new FormData()
     form.append('file', file)
-    form.append('keepOriginal', getKeepOriginal() ? '1' : '0')
     if (preview) form.append('preview', preview)
+    if (thumb) form.append('thumb', thumb)
     return request<{
       id: string
       url: string
       previewUrl: string
+      thumbUrl: string
       mime: string
       kind: string
       hasPreview: boolean
+      hasThumb: boolean
     }>('/api/media', { method: 'POST', body: form })
+  },
+
+  uploadThumb: (id: string, thumb: File) => {
+    const form = new FormData()
+    form.append('thumb', thumb)
+    return request<{ thumbUrl: string; hasThumb: boolean }>(
+      `/api/media/${id}/thumb`,
+      { method: 'PATCH', body: form },
+    )
   },
 
   letters: () => request<{ letters: ApiLetter[] }>('/api/letters'),

@@ -49,7 +49,7 @@ A private two-person memory site: timeline, photo album, 23:00 mailbox, wish lis
 - **纪念日**：在一起的日子、两个生日、自定义纪念日
 - **首页**：每日轮换短句、倒计时、纪念日横滑卡片
 - **戳一下**：每天最多 5 次，对方下次打开首页能看到未读
-- **设置**：城市、纪念日、主题色、深色模式、照片原图策略、数据导出
+- **设置**：城市、纪念日、主题色、深色模式、照片质量策略、数据导出
 
 ### 技术栈
 
@@ -124,7 +124,8 @@ npx wrangler deploy
 - 未解锁的信件只返回 `locked`，不返回正文和语音地址
 - 私密记录里的媒体返回 403
 - 生产环境拒绝 SVG 上传
-- 照片可选保留原图或只存压缩图
+- 照片上传会生成 480px 缩略图、1600px 预览和可选原图；列表用缩略图，点开先显示预览，再在后台加载原图
+- 照片质量可选「高清压缩（2048px）」「相机原图（慢）」「只存压缩图」；旧照片会在相册加载时自动补缩略图
 
 ### 项目结构
 
@@ -139,7 +140,7 @@ docs/           README 截图
 
 ### 已知限制
 
-- 照片没有多尺寸缩略图，列表使用 1600px 压缩预览
+- 列表有 480px 缩略图，点开使用 1600px 预览；没有更多尺寸的裁剪版本
 - HEIC 照片会被拦截，需要兼容格式或截图
 - 语音格式跟随浏览器，跨浏览器兼容性有限
 - 农历生日和农历纪念日还没做
@@ -164,7 +165,7 @@ MIT
 - **Anniversaries**: together since, two birthdays and custom anniversaries
 - **Home**: daily rotating notes, countdown and anniversary cards
 - **Nudge**: up to 5 times a day; the other person sees unread nudges on the home page
-- **Settings**: cities, anniversaries, themes, dark mode, original-photo policy and data export
+- **Settings**: cities, anniversaries, themes, dark mode, photo quality policy and data export
 
 ### Stack
 
@@ -239,7 +240,8 @@ Fill in your own `database_id` and `SETUP_CODE` in `wrangler.jsonc`. The real `w
 - Locked letters return only `locked`; neither the body nor the voice URL is sent
 - Media attached to private entries returns 403 to the other account
 - SVG uploads are rejected in production
-- Photos can keep the original file or store only the compressed preview
+- Photos get a 480px thumbnail, a 1600px preview and an optional original; lists use the thumbnail, and the viewer shows the preview while the original loads in the background
+- Photo quality can be "High compression (2048px)", "Camera original (slow)" or "Compressed only"; old photos get thumbnails backfilled when the album is opened
 
 ### Project layout
 
@@ -254,7 +256,7 @@ docs/           README screenshots
 
 ### Limitations
 
-- No multi-size thumbnails; lists use a 1600px compressed preview
+- Lists use 480px thumbnails and 1600px previews; there are no additional crop sizes
 - HEIC uploads are rejected; use a compatible format or a screenshot
 - Voice format depends on the browser and may not be portable across browsers
 - Lunar birthdays and lunar anniversaries are not implemented

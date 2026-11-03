@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 
 export interface ViewerPhoto {
   src: string
+  previewSrc?: string
   alt?: string
 }
 
@@ -50,6 +51,7 @@ export default function PhotoViewer({
   const [direction, setDirection] = useState(1)
   const [downloading, setDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState('')
+  const [showOriginal, setShowOriginal] = useState(false)
   const gestureRef = useRef<Gesture | null>(null)
   const photo = photos[index]
 
@@ -63,12 +65,27 @@ export default function PhotoViewer({
   }
 
   useEffect(() => {
+    setShowOriginal(false)
+    let alive = true
+    const image = new Image()
+    image.onload = () => {
+      if (alive) setShowOriginal(true)
+    }
+    image.src = photo.src
+
+    return () => {
+      alive = false
+      image.onload = null
+    }
+  }, [photo.src])
+
+  useEffect(() => {
     const neighbours = [index - 1, index + 1]
     for (const position of neighbours) {
       const item = photos[position]
       if (item) {
         const image = new Image()
-        image.src = item.src
+        image.src = item.previewSrc ?? item.src
       }
     }
   }, [index, photos])
@@ -249,7 +266,7 @@ export default function PhotoViewer({
         >
           <img
             className="viewer-img"
-            src={photo.src}
+            src={showOriginal ? photo.src : (photo.previewSrc ?? photo.src)}
             alt={photo.alt ?? '照片'}
             draggable={false}
           />

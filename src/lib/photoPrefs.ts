@@ -1,18 +1,26 @@
-const KEY = 'zhaomu:keep-original'
+export type PhotoQuality = 'high' | 'raw' | 'preview'
 
-export function getKeepOriginal() {
+const KEY = 'zhaomu:photo-quality'
+const LEGACY_KEY = 'zhaomu:keep-original'
+
+export function getPhotoQuality(): PhotoQuality {
   try {
     const value = localStorage.getItem(KEY)
-    if (value === null) return true
-    return value === '1'
+    if (value === 'raw' || value === 'preview' || value === 'high') {
+      return value
+    }
+
+    const legacy = localStorage.getItem(LEGACY_KEY)
+    if (legacy === '0') return 'preview'
+    return 'high'
   } catch {
-    return true
+    return 'high'
   }
 }
 
-export function setKeepOriginal(value: boolean) {
+export function setPhotoQuality(value: PhotoQuality) {
   try {
-    localStorage.setItem(KEY, value ? '1' : '0')
+    localStorage.setItem(KEY, value)
   } catch {
     /* 隐私模式下忽略 */
   }
