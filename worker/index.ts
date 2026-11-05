@@ -1458,51 +1458,63 @@ app.patch('/api/letters/:id/read', async (c) => {
 app.get('/api/nudges', async (c) => {
   const user = c.get('user')
 
-  const unseen = await c.env.DB.prepare(
-    'SELECT COUNT(*) AS n FROM nudges WHERE to_user = ? AND seen_at IS NULL',
+  const row = await c.env.DB.prepare(
+    `SELECT
+       (SELECT COUNT(*) FROM nudges WHERE to_user = ? AND seen_at IS NULL) AS unseen,
+       (SELECT COUNT(*) FROM nudges WHERE from_user = ? AND created_at >= ?) AS sent`,
   )
-    .bind(user.id)
-    .first<{ n: number }>()
-
-  const sent = await c.env.DB.prepare(
-    'SELECT COUNT(*) AS n FROM nudges WHERE from_user = ? AND created_at >= ?',
-  )
-    .bind(user.id, shanghaiDayStartIso())
-    .first<{ n: number }>()
+    .bind(user.id, user.id, shanghaiDayStartIso())
+    .first<{ unseen: number; sent: number }>()
 
   return c.json({
-    unseen: unseen?.n ?? 0,
-    sentToday: sent?.n ?? 0,
+    unseen: row?.unseen ?? 0,
+    sentToday: row?.sent ?? 0,
   })
 })
 
 app.post('/api/nudges', async (c) => {
   const user = c.get('user')
+  const now = new Date().toISOString()
+  const dayStart = shanghaiDayStartIso()
+
+  const result = await c.env.DB.prepare(
+    `INSERT INTO nudges (id, from_user, to_user, created_at)
+     SELECT ?, ?, u.id, ?
+     FROM users u
+     WHERE u.id != ?
+       AND (SELECT COUNT(*) FROM nudges WHERE from_user = ? AND created_at >= ?) < 5
+     LIMIT 1`,
+  )
+    .bind(
+      crypto.randomUUID(),
+      user.id,
+      now,
+      user.id,
+      user.id,
+      dayStart,
+    )
+    .run()
+
+  if (!result.meta.changes) {
+    const sent = await c.env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM nudges WHERE from_user = ? AND created_at >= ?',
+    )
+      .bind(user.id, dayStart)
+      .first<{ n: number }>()
+
+    if ((sent?.n ?? 0) >= 5) {
+      return c.json({ error: 'daily_limit' }, 429)
+    }
+    return c.json({ error: 'no_partner' }, 409)
+  }
 
   const sent = await c.env.DB.prepare(
     'SELECT COUNT(*) AS n FROM nudges WHERE from_user = ? AND created_at >= ?',
   )
-    .bind(user.id, shanghaiDayStartIso())
+    .bind(user.id, dayStart)
     .first<{ n: number }>()
 
-  const count = sent?.n ?? 0
-  if (count >= 5) return c.json({ error: 'daily_limit' }, 429)
-
-  const partner = await c.env.DB.prepare(
-    'SELECT id FROM users WHERE id != ? LIMIT 1',
-  )
-    .bind(user.id)
-    .first<{ id: string }>()
-
-  if (!partner) return c.json({ error: 'no_partner' }, 409)
-
-  await c.env.DB.prepare(
-    'INSERT INTO nudges (id, from_user, to_user, created_at) VALUES (?, ?, ?, ?)',
-  )
-    .bind(crypto.randomUUID(), user.id, partner.id, new Date().toISOString())
-    .run()
-
-  return c.json({ sentToday: count + 1 }, 201)
+  return c.json({ sentToday: sent?.n ?? 1 }, 201)
 })
 
 app.patch('/api/nudges/seen', async (c) => {

@@ -737,6 +737,13 @@ img {
   color: var(--muted);
 }
 
+.nudge-error {
+  margin: 6px 0 0;
+  color: var(--accent-2);
+  font-size: 11px;
+  text-align: center;
+}
+
 .heart-fly {
   position: absolute;
   bottom: 16px;

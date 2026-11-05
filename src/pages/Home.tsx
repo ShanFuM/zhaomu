@@ -1,6 +1,6 @@
 import dayjs from 'dayjs'
 import { CloudRain, CloudSnow, CloudSun, Heart, Mail, Sun } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   cities as fallbackCities,
@@ -209,19 +209,41 @@ export default function Home() {
   const countdown = hms(target.getTime() - now)
 
   const [hearts, setHearts] = useState<number[]>([])
+  const [nudgeError, setNudgeError] = useState('')
+  const lastNudgeRef = useRef(0)
 
-  const nudge = async () => {
+  const nudge = () => {
     if (nudgeState.sentToday >= 5) return
 
-    try {
-      const result = await api.sendNudge()
-      setNudgeState((prev) => ({ ...prev, sentToday: result.sentToday }))
-      const id = Date.now()
-      setHearts((h) => [...h, id])
-      window.setTimeout(() => setHearts((h) => h.filter((x) => x !== id)), 1100)
-    } catch {
-      /* 到达上限或网络失败，保持原状态 */
-    }
+    const now = Date.now()
+    if (now - lastNudgeRef.current < 300) return
+    lastNudgeRef.current = now
+
+    setNudgeError('')
+    setNudgeState((prev) => ({
+      ...prev,
+      sentToday: Math.min(5, prev.sentToday + 1),
+    }))
+
+    const id = now
+    setHearts((h) => [...h, id])
+    window.setTimeout(() => setHearts((h) => h.filter((x) => x !== id)), 1100)
+
+    void api
+      .sendNudge()
+      .then((result) => {
+        setNudgeState((prev) => ({
+          ...prev,
+          sentToday: Math.max(prev.sentToday, result.sentToday),
+        }))
+      })
+      .catch(() => {
+        setNudgeState((prev) => ({
+          ...prev,
+          sentToday: Math.max(0, prev.sentToday - 1),
+        }))
+        setNudgeError('没戳出去，再试一次')
+      })
   }
 
   const readNudges = async () => {
@@ -368,6 +390,7 @@ export default function Home() {
             />
           ))}
         </button>
+        {nudgeError && <p className="nudge-error">{nudgeError}</p>}
       </section>
 
       <section className="section">
