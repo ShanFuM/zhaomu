@@ -33,6 +33,7 @@ import {
   type Mode,
 } from '../lib/appearance'
 import { patchHomeCache } from '../lib/homeCache'
+import { pronounLabel } from '../lib/pronoun'
 import {
   getPhotoQuality,
   setPhotoQuality,
@@ -211,6 +212,12 @@ export default function Settings() {
     birthdayB: '',
   })
   const [meetingDraft, setMeetingDraft] = useState('')
+  const pronoun = pronounLabel(user?.partnerPronoun)
+  const birthdayOwners = settings?.birthdayOwners ?? []
+  const myBirthdayIndex = user ? birthdayOwners.indexOf(user.id) : -1
+  const partnerBirthdayIndex = user
+    ? birthdayOwners.findIndex((id) => id !== user.id)
+    : -1
 
   useEffect(() => {
     api
@@ -328,8 +335,12 @@ export default function Settings() {
     if (!settings) return
     setAnniversaryDraft({
       togetherSince: settings.togetherSince,
-      birthdayA: settings.birthdays[0] ?? '',
-      birthdayB: settings.birthdays[1] ?? '',
+      birthdayA:
+        settings.birthdays[myBirthdayIndex >= 0 ? myBirthdayIndex : 0] ?? '',
+      birthdayB:
+        settings.birthdays[
+          partnerBirthdayIndex >= 0 ? partnerBirthdayIndex : 1
+        ] ?? '',
     })
     setError('')
     setSheet('anniversary')
@@ -340,6 +351,23 @@ export default function Settings() {
     setMeetingDraft(settings.nextMeeting ?? '')
     setError('')
     setSheet('meeting')
+  }
+
+  const saveAnniversary = () => {
+    if (!settings) return
+
+    const nextBirthdays = [...settings.birthdays]
+    const mine = anniversaryDraft.birthdayA || null
+    const partner = anniversaryDraft.birthdayB || null
+
+    nextBirthdays[myBirthdayIndex >= 0 ? myBirthdayIndex : 0] = mine
+    nextBirthdays[partnerBirthdayIndex >= 0 ? partnerBirthdayIndex : 1] =
+      partner
+
+    void persist({
+      togetherSince: anniversaryDraft.togetherSince,
+      birthdays: nextBirthdays,
+    })
   }
 
   const exportData = async () => {
@@ -539,7 +567,7 @@ export default function Settings() {
                       }
                     />
                     <CityField
-                      label="她的城市"
+                      label={`${pronoun}的城市`}
                       value={cityDraft[1]}
                       onChange={(city) =>
                         setCityDraft((prev) => [prev[0], city])
@@ -589,7 +617,7 @@ export default function Settings() {
                   />
                 </label>
                 <label className="field">
-                  <span>她的生日</span>
+                  <span>{pronoun}的生日</span>
                   <input
                     type="date"
                     value={anniversaryDraft.birthdayB}
@@ -607,15 +635,7 @@ export default function Settings() {
                 <button
                   className="btn-primary"
                   disabled={saving || !anniversaryDraft.togetherSince}
-                  onClick={() =>
-                    persist({
-                      togetherSince: anniversaryDraft.togetherSince,
-                      birthdays: [
-                        anniversaryDraft.birthdayA || null,
-                        anniversaryDraft.birthdayB || null,
-                      ],
-                    })
-                  }
+                  onClick={saveAnniversary}
                 >
                   {saving ? '保存中…' : '保存纪念日'}
                 </button>

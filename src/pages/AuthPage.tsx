@@ -136,13 +136,13 @@ export default function AuthPage() {
             </fieldset>
 
             <fieldset>
-              <legend>她</legend>
+              <legend>对方</legend>
               <label className="field">
                 <span>名字</span>
                 <input
                   value={her.name}
                   maxLength={20}
-                  placeholder="她的名字"
+                  placeholder="对方的名字"
                   onChange={(event) =>
                     setHer({ ...her, name: event.target.value })
                   }

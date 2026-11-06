@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN pronoun TEXT NOT NULL DEFAULT 'ta';

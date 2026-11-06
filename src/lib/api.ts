@@ -2,6 +2,8 @@ export interface User {
   id: string
   name: string
   email: string
+  pronoun: string
+  partnerPronoun: string
 }
 
 export interface MediaRef {
@@ -57,6 +59,7 @@ export interface ApiSettings {
   togetherSince: string
   nextMeeting: string | null
   birthdays: (string | null)[]
+  birthdayOwners: string[]
   cities: City[]
   updatedAt: string
 }

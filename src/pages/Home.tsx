@@ -2,6 +2,7 @@ import dayjs from 'dayjs'
 import { CloudRain, CloudSnow, CloudSun, Heart, Mail, Sun } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import {
   cities as fallbackCities,
   cityDistance as fallbackDistance,
@@ -18,6 +19,7 @@ import { daysSince, daysUntilNext, greetingOf, hms, todayLabel } from '../lib/da
 import { readHomeCache, writeHomeCache } from '../lib/homeCache'
 import { distanceKm } from '../lib/geo'
 import { loveNoteOf } from '../lib/loveNotes'
+import { pronounLabel } from '../lib/pronoun'
 import { useNow } from '../lib/useNow'
 
 type CityKind = 'sun' | 'cloud' | 'rain' | 'snow'
@@ -62,6 +64,7 @@ function HomeSkeleton() {
 }
 
 export default function Home() {
+  const { user } = useAuth()
   const now = useNow()
   const hour = new Date(now).getHours()
   const loveNote = loveNoteOf()
@@ -176,7 +179,15 @@ export default function Home() {
     rawMeetingDays === null ? null : Math.max(0, rawMeetingDays)
   const meetingPassed = rawMeetingDays !== null && rawMeetingDays < 0
 
-  const birthday = settings ? settings.birthdays[1] : null
+  const pronoun = pronounLabel(user?.partnerPronoun)
+  const birthdayOwners = settings?.birthdayOwners ?? []
+  const partnerBirthdayIndex = user
+    ? birthdayOwners.findIndex((id) => id !== user.id)
+    : -1
+  const birthday =
+    settings && partnerBirthdayIndex >= 0
+      ? settings.birthdays[partnerBirthdayIndex]
+      : (settings?.birthdays[1] ?? null)
   const birthdayDays = birthday ? daysUntilNext(birthday) : null
 
   const distance =
@@ -257,9 +268,9 @@ export default function Home() {
 
   const weatherNote =
     partner.kind === 'rain'
-      ? `${partner.name} ${partner.temp}°C 有${partner.label}，记得提醒她带伞。`
+      ? `${partner.name} ${partner.temp}°C 有${partner.label}，记得提醒${pronoun}带伞。`
       : partner.kind === 'snow'
-        ? `${partner.name} ${partner.temp}°C 在${partner.label}，提醒她多穿一点。`
+        ? `${partner.name} ${partner.temp}°C 在${partner.label}，提醒${pronoun}多穿一点。`
         : `${partner.name} ${partner.label}，${partner.low}°C 到 ${partner.high}°C。`
 
   if (loading && !cached) {
@@ -303,9 +314,9 @@ export default function Home() {
           <h2>今天的天气</h2>
           <span className="meta">
             {partner.kind === 'rain'
-              ? '她那边在下雨'
+              ? `${pronoun}那边在下雨`
               : partner.kind === 'snow'
-                ? '她那边在下雪'
+                ? `${pronoun}那边在下雪`
                 : '实时天气'}
           </span>
         </div>
@@ -363,7 +374,7 @@ export default function Home() {
         </Link>
         {nudgeState.unseen > 0 && (
           <div className="nudge-inbox">
-            <span>她戳了你 {nudgeState.unseen} 下</span>
+            <span>{pronoun}戳了你 {nudgeState.unseen} 下</span>
             <button onClick={readNudges}>知道啦</button>
           </div>
         )}
@@ -374,7 +385,7 @@ export default function Home() {
           aria-label="戳一下对方"
         >
           <Heart size={17} strokeWidth={1.8} />
-          想她了就戳一下
+          想{pronoun}了就戳一下
           <small>
             {nudgeState.sentToday >= 5
               ? '今天戳满啦'
@@ -407,7 +418,7 @@ export default function Home() {
             </strong>
           </div>
           <div className="chip">
-            <span>她的生日</span>
+            <span>{pronoun}的生日</span>
             <strong>
               {birthdayDays === null ? '待填' : `还有 ${birthdayDays}`}
               {birthdayDays !== null && <em>天</em>}

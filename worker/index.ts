@@ -14,6 +14,8 @@ interface SessionUser {
   id: string
   name: string
   email: string
+  pronoun: string
+  partnerPronoun: string
 }
 
 type AppEnv = {
@@ -203,12 +205,18 @@ const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
 
   const id = await sha256Hex(token)
   const row = await c.env.DB.prepare(
-    `SELECT u.id, u.name, u.email, s.expires_at
+    `SELECT u.id, u.name, u.email, u.pronoun, s.expires_at,
+            (SELECT pronoun FROM users WHERE id != u.id ORDER BY rowid LIMIT 1) AS partner_pronoun
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.id = ?`,
   )
     .bind(id)
-    .first<SessionUser & { expires_at: string }>()
+    .first<
+      SessionUser & {
+        expires_at: string
+        partner_pronoun: string | null
+      }
+    >()
 
   if (!row) return c.json({ error: 'unauthorized' }, 401)
 
@@ -218,7 +226,13 @@ const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
     return c.json({ error: 'unauthorized' }, 401)
   }
 
-  c.set('user', { id: row.id, name: row.name, email: row.email })
+  c.set('user', {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    pronoun: row.pronoun ?? 'ta',
+    partnerPronoun: row.partner_pronoun ?? 'ta',
+  })
   await next()
 }
 
@@ -268,6 +282,17 @@ function settingsDto(row: SettingsRow) {
       { name: row.city_b_name, lat: row.city_b_lat, lon: row.city_b_lon },
     ],
     updatedAt: row.updated_at,
+  }
+}
+
+async function settingsPayload(c: Context<AppEnv>, row: SettingsRow) {
+  const users = await c.env.DB.prepare(
+    'SELECT id FROM users ORDER BY rowid',
+  ).all<{ id: string }>()
+
+  return {
+    ...settingsDto(row),
+    birthdayOwners: users.results.map((user) => user.id),
   }
 }
 
@@ -433,11 +458,19 @@ app.post('/api/auth/setup', async (c) => {
   await c.env.DB.batch(prepared.map((item) => item.statement))
   await createSession(c, prepared[0].id)
 
+  const partner = await c.env.DB.prepare(
+    'SELECT pronoun FROM users WHERE id != ? ORDER BY rowid LIMIT 1',
+  )
+    .bind(prepared[0].id)
+    .first<{ pronoun: string }>()
+
   return c.json({
     user: {
       id: prepared[0].id,
       name: prepared[0].name,
       email: prepared[0].email,
+      pronoun: 'ta',
+      partnerPronoun: partner?.pronoun ?? 'ta',
     },
   })
 })
@@ -453,17 +486,32 @@ app.post('/api/auth/login', async (c) => {
   if (!email || !password) return c.json({ error: 'invalid_credentials' }, 401)
 
   const row = await c.env.DB.prepare(
-    'SELECT id, name, email, password_hash FROM users WHERE email = ?',
+    `SELECT u.id, u.name, u.email, u.pronoun, u.password_hash,
+            (SELECT p.pronoun FROM users p WHERE p.id != u.id ORDER BY p.rowid LIMIT 1) AS partner_pronoun
+     FROM users u WHERE u.email = ?`,
   )
     .bind(email)
-    .first<SessionUser & { password_hash: string }>()
+    .first<
+      SessionUser & {
+        password_hash: string
+        partner_pronoun: string | null
+      }
+    >()
 
   if (!row || !(await verifyPassword(password, row.password_hash))) {
     return c.json({ error: 'invalid_credentials' }, 401)
   }
 
   await createSession(c, row.id)
-  return c.json({ user: { id: row.id, name: row.name, email: row.email } })
+  return c.json({
+    user: {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      pronoun: row.pronoun ?? 'ta',
+      partnerPronoun: row.partner_pronoun ?? 'ta',
+    },
+  })
 })
 
 app.post('/api/auth/logout', async (c) => {
@@ -1159,7 +1207,7 @@ app.post('/api/letters', async (c) => {
 
 app.get('/api/settings', async (c) => {
   const row = await getSettingsRow(c.env)
-  return c.json({ settings: settingsDto(row) })
+  return c.json({ settings: await settingsPayload(c, row) })
 })
 
 app.put('/api/settings', async (c) => {
@@ -1254,7 +1302,7 @@ app.put('/api/settings', async (c) => {
     .run()
 
   const row = await getSettingsRow(c.env)
-  return c.json({ settings: settingsDto(row) })
+  return c.json({ settings: await settingsPayload(c, row) })
 })
 
 app.get('/api/weather', async (c) => {

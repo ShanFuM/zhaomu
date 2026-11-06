@@ -3,13 +3,16 @@ import { Lock, Mail, PenLine, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api, type ApiLetter } from '../lib/api'
+import { useAuth } from '../auth/AuthContext'
 import VoiceInput from '../components/VoiceInput'
 import type { VoiceValue } from '../components/VoiceInput'
 import VoicePlayer from '../components/VoicePlayer'
 import { dayLabel, hms } from '../lib/date'
+import { pronounLabel } from '../lib/pronoun'
 import { useNow } from '../lib/useNow'
 
 export default function Mailbox() {
+  const { user } = useAuth()
   const now = useNow()
   const [letters, setLetters] = useState<ApiLetter[]>([])
   const [loading, setLoading] = useState(true)
@@ -235,7 +238,7 @@ export default function Mailbox() {
 
               <textarea
                 className="sheet-text"
-                placeholder="想对她说的话…"
+                placeholder={`想对${pronounLabel(user?.partnerPronoun)}说的话…`}
                 value={text}
                 maxLength={1000}
                 onChange={(event) => setText(event.target.value)}
@@ -282,7 +285,11 @@ export default function Mailbox() {
             >
               <div className="sheet-grab" />
               <div className="sheet-head">
-                <h2>{selected.mine ? '我写的信' : '她写给你的信'}</h2>
+                <h2>
+                  {selected.mine
+                    ? '我写的信'
+                    : `${pronounLabel(user?.partnerPronoun)}写给你的信`}
+                </h2>
                 <button
                   className="sheet-close"
                   aria-label="关闭"
